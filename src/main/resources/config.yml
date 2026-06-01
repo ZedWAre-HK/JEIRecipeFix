@@ -1,0 +1,13 @@
+# JEIRecipeFix configuration.
+
+# Master switch. When false, no recipes are sent.
+enabled: true
+
+# Send recipes automatically when a player joins.
+sync-on-join: true
+
+# Re-send recipes to online players after a datapack reload.
+sync-on-datapack-reload: true
+
+# Verbose logging for troubleshooting (per-player brand + recipe counts).
+debug: false

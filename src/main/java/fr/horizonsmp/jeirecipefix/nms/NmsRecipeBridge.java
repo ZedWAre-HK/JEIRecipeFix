@@ -140,6 +140,14 @@ public final class NmsRecipeBridge implements RecipeBridge {
         this.getHandle = Reflect.method(craftPlayer, "getHandle");
     }
 
+    private void refreshRecipes() {
+        Method getRecipeManager = Reflect.method(minecraftServer.getClass(), "getRecipeManager");
+        Object recipeManager = Reflect.call(getRecipeManager, minecraftServer);
+        Collection<?> recipes = (Collection<?>) Reflect.call(getRecipes, recipeManager);
+        this.recipesCache = recipes;
+        this.recipeCount = recipes.size();
+    }
+
     private Object newResourceLocation(Class<?> resourceLocation, String id) {
         try {
             // ResourceLocation.parse(String): the 1.21 static factory (the old 2-arg constructor was removed).
@@ -177,6 +185,7 @@ public final class NmsRecipeBridge implements RecipeBridge {
 
     @Override
     public byte[] buildFabricPayload() {
+        refreshRecipes();
         Map<Object, List<Object>> bySerializer = new LinkedHashMap<>();
         for (Object holder : (Collection<?>) recipesCache) {
             Object recipe = Reflect.call(holderValue, holder);
@@ -210,6 +219,7 @@ public final class NmsRecipeBridge implements RecipeBridge {
 
     @Override
     public byte[] buildNeoForgePayload() {
+        refreshRecipes();
         LinkedHashSet<Object> types = new LinkedHashSet<>();
         List<Object> holders = new ArrayList<>();
         for (Object holder : (Collection<?>) recipesCache) {

@@ -3,6 +3,7 @@ package fr.horizonsmp.jeirecipefix;
 import fr.horizonsmp.jeirecipefix.config.ConfigLoader;
 import fr.horizonsmp.jeirecipefix.config.PluginConfig;
 import fr.horizonsmp.jeirecipefix.listener.PlayerConnectionListener;
+import fr.horizonsmp.jeirecipefix.listener.ResourceReloadListener;
 import fr.horizonsmp.jeirecipefix.nms.NmsRecipeBridge;
 import fr.horizonsmp.jeirecipefix.nms.RecipeBridge;
 import fr.horizonsmp.jeirecipefix.sync.RecipeSyncService;
@@ -28,6 +29,8 @@ public final class JEIRecipeFix extends JavaPlugin {
 
         getServer().getPluginManager().registerEvents(
                 new PlayerConnectionListener(this, syncService, config::get), this);
+        getServer().getPluginManager().registerEvents(
+                new ResourceReloadListener(syncService, config::get), this);
 
         getLogger().info("JEIRecipeFix enabled (recipe sync "
                 + (bridge.isAvailable() ? "active" : "dormant") + ").");

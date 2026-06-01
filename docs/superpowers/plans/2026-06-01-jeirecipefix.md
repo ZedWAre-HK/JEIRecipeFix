@@ -144,7 +144,9 @@ dependencies {
 }
 
 java {
-    toolchain.languageVersion = JavaLanguageVersion.of(21)
+    // JDK 25 is the installed toolchain; options.release = 21 below emits Java 21
+    // bytecode so the single jar still loads on 1.21.2 servers (which run on Java 21).
+    toolchain.languageVersion = JavaLanguageVersion.of(25)
 }
 
 tasks {
@@ -1871,11 +1873,11 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Setup Java 21
+      - name: Setup Java 25
         uses: actions/setup-java@v4
         with:
           distribution: temurin
-          java-version: '21'
+          java-version: '25'
 
       - name: Setup Gradle
         uses: gradle/actions/setup-gradle@v4

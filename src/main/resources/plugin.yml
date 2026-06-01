@@ -1,0 +1,34 @@
+name: JEIRecipeFix
+version: '${version}'
+description: Sends server recipes to JEI, REI and EMI clients so recipe lookups work again.
+author: Orchiwi
+
+main: fr.horizonsmp.jeirecipefix.JEIRecipeFix
+api-version: '1.21'
+load: POSTWORLD
+folia-supported: true
+
+commands:
+  jeirecipefix:
+    description: JEIRecipeFix administration commands.
+    usage: /<command> [resync|reload|info|help]
+    aliases: [jrf]
+    permission: jeirecipefix.admin
+
+permissions:
+  jeirecipefix.admin:
+    description: Full access to JEIRecipeFix commands.
+    default: op
+    children:
+      jeirecipefix.command.resync: true
+      jeirecipefix.command.reload: true
+      jeirecipefix.command.info: true
+  jeirecipefix.command.resync:
+    description: Allows re-sending recipes to players.
+    default: op
+  jeirecipefix.command.reload:
+    description: Allows reloading the JEIRecipeFix configuration.
+    default: op
+  jeirecipefix.command.info:
+    description: Allows viewing JEIRecipeFix status.
+    default: op

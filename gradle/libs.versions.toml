@@ -1,0 +1,19 @@
+[versions]
+paper-api = "1.21.4-R0.1-SNAPSHOT"
+minecraft = "1.21.4"
+netty = "4.1.115.Final"
+junit = "5.11.3"
+junit-launcher = "1.11.3"
+
+run-task = "3.0.2"
+minotaur = "2.8.7"
+
+[libraries]
+paper-api = { module = "io.papermc.paper:paper-api", version.ref = "paper-api" }
+netty-buffer = { module = "io.netty:netty-buffer", version.ref = "netty" }
+junit-jupiter = { module = "org.junit.jupiter:junit-jupiter", version.ref = "junit" }
+junit-launcher = { module = "org.junit.platform:junit-platform-launcher", version.ref = "junit-launcher" }
+
+[plugins]
+run-paper = { id = "xyz.jpenilla.run-paper", version.ref = "run-task" }
+minotaur = { id = "com.modrinth.minotaur", version.ref = "minotaur" }

@@ -23,3 +23,6 @@ run
 # Local-only files
 .local/
 .claude/
+
+# Memory/agent artifacts
+ruvector.db

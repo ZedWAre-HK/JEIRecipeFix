@@ -10,6 +10,7 @@ import java.lang.reflect.Method;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 
@@ -37,6 +38,14 @@ public final class NmsRecipeBridge implements RecipeBridge {
     private Constructor<?> registryBufCtor;
     private Object recipesCache;
     private int recipeCount;
+
+    private Object recipeTypeRegistry;       // BuiltInRegistries.RECIPE_TYPE
+    private Method recipeGetType;            // Recipe#getType()
+    private Method recipeTypeRegistryGetId;  // Registry#getId(Object) -> int
+    private Object recipeHolderStreamCodec;  // RecipeHolder.STREAM_CODEC (static field)
+    private Object serverRegistries;         // MinecraftServer#registries() -> LayeredRegistryAccess<RegistryLayer>
+    private Method serializeTagsToNetwork;   // TagNetworkSerialization#serializeTagsToNetwork(LayeredRegistryAccess) -> Map
+    private Constructor<?> updateTagsPacketCtor; // ClientboundUpdateTagsPacket(Map)
 
     private Method getHandle;
     private Method connectionSend;
@@ -89,6 +98,23 @@ public final class NmsRecipeBridge implements RecipeBridge {
         this.serializerStreamCodec = Reflect.method(recipeSerializerClass, "streamCodec");
         Class<?> streamEncoderClass = Reflect.clazz("net.minecraft.network.codec.StreamEncoder");
         this.streamCodecEncode = Reflect.method(streamEncoderClass, "encode", Object.class, Object.class);
+
+        // NeoForge path: recipe types written as a registry collection, holders via RecipeHolder.STREAM_CODEC.
+        this.recipeTypeRegistry = Reflect.staticField(builtInRegistries, "RECIPE_TYPE");
+        this.recipeTypeRegistryGetId = Reflect.method(recipeTypeRegistry.getClass(), "getId", Object.class);
+        this.recipeGetType = Reflect.method(recipeClass, "getType");
+        // RecipeHolder.STREAM_CODEC is a StreamCodec (which extends StreamEncoder), so streamCodecEncode applies to it.
+        this.recipeHolderStreamCodec = Reflect.staticField(recipeHolder, "STREAM_CODEC");
+
+        // NeoForge clients also expect tags: build a vanilla ClientboundUpdateTagsPacket from the server's frozen
+        // registries. serializeTagsToNetwork(LayeredRegistryAccess) yields exactly the Map the packet constructor needs.
+        Method serverRegistriesMethod = Reflect.method(minecraftServer.getClass(), "registries");
+        this.serverRegistries = Reflect.call(serverRegistriesMethod, minecraftServer);
+        Class<?> tagNetworkSerialization = Reflect.clazz("net.minecraft.tags.TagNetworkSerialization");
+        Class<?> layeredRegistryAccess = Reflect.clazz("net.minecraft.core.LayeredRegistryAccess");
+        this.serializeTagsToNetwork = Reflect.method(tagNetworkSerialization, "serializeTagsToNetwork", layeredRegistryAccess);
+        Class<?> updateTagsPacket = Reflect.clazz("net.minecraft.network.protocol.common.ClientboundUpdateTagsPacket");
+        this.updateTagsPacketCtor = Reflect.ctor(updateTagsPacket, Map.class);
 
         Class<?> friendlyByteBuf = Reflect.clazz("net.minecraft.network.FriendlyByteBuf");
         this.bufWriteVarInt = Reflect.method(friendlyByteBuf, "writeVarInt", int.class);
@@ -184,7 +210,29 @@ public final class NmsRecipeBridge implements RecipeBridge {
 
     @Override
     public byte[] buildNeoForgePayload() {
-        throw new UnsupportedOperationException("NeoForge payload not implemented yet");
+        LinkedHashSet<Object> types = new LinkedHashSet<>();
+        List<Object> holders = new ArrayList<>();
+        for (Object holder : (Collection<?>) recipesCache) {
+            holders.add(holder);
+            Object recipe = Reflect.call(holderValue, holder);
+            types.add(Reflect.call(recipeGetType, recipe));
+        }
+
+        Object buf = newRegistryBuf();
+        try {
+            Reflect.call(bufWriteVarInt, buf, types.size());
+            for (Object type : types) {
+                int id = (int) Reflect.call(recipeTypeRegistryGetId, recipeTypeRegistry, type);
+                Reflect.call(bufWriteVarInt, buf, id);
+            }
+            Reflect.call(bufWriteVarInt, buf, holders.size());
+            for (Object holder : holders) {
+                Reflect.call(streamCodecEncode, recipeHolderStreamCodec, buf, holder);
+            }
+            return toBytes(buf);
+        } finally {
+            ((io.netty.buffer.ByteBuf) buf).release();
+        }
     }
 
     @Override
@@ -195,6 +243,31 @@ public final class NmsRecipeBridge implements RecipeBridge {
     @Override
     public void sendNeoForge(Player player, byte[] payload) {
         send(player, neoForgePayloadId, payload);
+        sendTagsPacket(player);
+    }
+
+    /** Builds the vanilla tags packet from the server's frozen registries (no player needed; unit-testable). */
+    Object buildTagsPacket() {
+        try {
+            Object tags = Reflect.call(serializeTagsToNetwork, null, serverRegistries);
+            return updateTagsPacketCtor.newInstance(tags);
+        } catch (ReflectiveOperationException e) {
+            throw new IllegalStateException("Cannot build ClientboundUpdateTagsPacket", e);
+        }
+    }
+
+    private void sendTagsPacket(Player player) {
+        try {
+            Object serverPlayer = Reflect.call(getHandle, player);
+            Object connection = Reflect.getField(serverPlayer, "connection");
+            sendPacket(connection, buildTagsPacket());
+        } catch (RuntimeException e) {
+            if (!sendFailureLogged) {
+                sendFailureLogged = true;
+                plugin.getLogger().log(java.util.logging.Level.SEVERE,
+                        "Failed to send tags packet to " + player.getName() + "; suppressing further send errors.", e);
+            }
+        }
     }
 
     private void send(Player player, Object payloadId, byte[] payload) {
@@ -204,11 +277,7 @@ public final class NmsRecipeBridge implements RecipeBridge {
             Object connection = Reflect.getField(serverPlayer, "connection");
             Object discarded = discardedPayloadCtor.newInstance(payloadId, payload);
             Object packet = customPayloadPacketCtor.newInstance(discarded);
-            if (connectionSend == null) {
-                connectionSend = Reflect.method(connection.getClass(), "send",
-                        Reflect.clazz("net.minecraft.network.protocol.Packet"));
-            }
-            Reflect.call(connectionSend, connection, packet);
+            sendPacket(connection, packet);
         } catch (ReflectiveOperationException | RuntimeException e) {
             if (!sendFailureLogged) {
                 sendFailureLogged = true;
@@ -216,5 +285,14 @@ public final class NmsRecipeBridge implements RecipeBridge {
                         "Failed to send recipe payload to " + player.getName() + "; suppressing further send errors.", e);
             }
         }
+    }
+
+    /** Sends a built packet over the player's connection, lazily resolving the cached send handle. */
+    private void sendPacket(Object connection, Object packet) {
+        if (connectionSend == null) {
+            connectionSend = Reflect.method(connection.getClass(), "send",
+                    Reflect.clazz("net.minecraft.network.protocol.Packet"));
+        }
+        Reflect.call(connectionSend, connection, packet);
     }
 }

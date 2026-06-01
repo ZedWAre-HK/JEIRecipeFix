@@ -17,6 +17,47 @@ final class Reflect {
         }
     }
 
+    /**
+     * Resolves the first of {@code names} that exists, in order. Lets a single call site span versions
+     * where a Mojang-mapped class was renamed (e.g. {@code ResourceLocation} became {@code Identifier} in 26.x).
+     */
+    static Class<?> clazzAny(String... names) {
+        for (String name : names) {
+            try {
+                return Class.forName(name);
+            } catch (ClassNotFoundException ignored) {
+                // try the next candidate
+            }
+        }
+        throw new IllegalStateException("Missing class (tried " + String.join(", ", names) + ")");
+    }
+
+    /** Resolves the first method named in {@code names} (in order) with the given params; for renamed members. */
+    static Method methodAny(Class<?> owner, String[] names, Class<?>... params) {
+        for (String name : names) {
+            try {
+                return method(owner, name, params);
+            } catch (IllegalStateException ignored) {
+                // try the next candidate name
+            }
+        }
+        throw new IllegalStateException("Missing method " + owner.getName() + "#" + String.join("|", names));
+    }
+
+    /** Resolves the first constructor whose params match one of {@code paramSets} (in order); for changed signatures. */
+    static Constructor<?> ctorAny(Class<?> owner, Class<?>[]... paramSets) {
+        for (Class<?>[] params : paramSets) {
+            try {
+                Constructor<?> c = owner.getDeclaredConstructor(params);
+                c.setAccessible(true);
+                return c;
+            } catch (NoSuchMethodException ignored) {
+                // try the next candidate signature
+            }
+        }
+        throw new IllegalStateException("Missing constructor " + owner.getName() + "(...)");
+    }
+
     static Constructor<?> ctor(Class<?> owner, Class<?>... params) {
         try {
             Constructor<?> c = owner.getDeclaredConstructor(params);

@@ -51,6 +51,7 @@ public final class NmsRecipeBridge implements RecipeBridge {
     private Method connectionSend;
     private Constructor<?> customPayloadPacketCtor;
     private Constructor<?> discardedPayloadCtor;
+    private boolean discardedPayloadTakesByteBuf; // 1.21.2/1.21.3 take ByteBuf; 1.21.4+ take byte[].
     private Object fabricPayloadId;
     private Object neoForgePayloadId;
     private boolean sendFailureLogged;
@@ -118,10 +119,15 @@ public final class NmsRecipeBridge implements RecipeBridge {
 
         Class<?> friendlyByteBuf = Reflect.clazz("net.minecraft.network.FriendlyByteBuf");
         this.bufWriteVarInt = Reflect.method(friendlyByteBuf, "writeVarInt", int.class);
-        Class<?> resourceLocation = Reflect.clazz("net.minecraft.resources.ResourceLocation");
-        this.bufWriteResourceLocation = Reflect.method(friendlyByteBuf, "writeResourceLocation", resourceLocation);
+        // 26.x renamed ResourceLocation to Identifier (with FriendlyByteBuf#writeResourceLocation ->
+        // writeIdentifier and ResourceKey#location -> identifier). Resolve each across both name eras.
+        Class<?> resourceLocation = Reflect.clazzAny(
+                "net.minecraft.resources.ResourceLocation",
+                "net.minecraft.resources.Identifier");
+        this.bufWriteResourceLocation = Reflect.methodAny(friendlyByteBuf,
+                new String[] {"writeResourceLocation", "writeIdentifier"}, resourceLocation);
         Class<?> resourceKey = Reflect.clazz("net.minecraft.resources.ResourceKey");
-        this.resourceKeyLocation = Reflect.method(resourceKey, "location");
+        this.resourceKeyLocation = Reflect.methodAny(resourceKey, new String[] {"location", "identifier"});
 
         Class<?> registryBuf = Reflect.clazz("net.minecraft.network.RegistryFriendlyByteBuf");
         Class<?> registryAccessClass = Reflect.clazz("net.minecraft.core.RegistryAccess");
@@ -131,8 +137,13 @@ public final class NmsRecipeBridge implements RecipeBridge {
         Class<?> customPacketPayload = Reflect.clazz("net.minecraft.network.protocol.common.custom.CustomPacketPayload");
         this.customPayloadPacketCtor = Reflect.ctor(customPayloadPacket, customPacketPayload);
         Class<?> discardedPayload = Reflect.clazz("net.minecraft.network.protocol.common.custom.DiscardedPayload");
-        // DiscardedPayload(ResourceLocation id, byte[] data): carries raw bytes for a channel the server has no codec for.
-        this.discardedPayloadCtor = Reflect.ctor(discardedPayload, resourceLocation, byte[].class);
+        // DiscardedPayload carries raw bytes for a channel the server has no codec for. 1.21.4+ takes
+        // (ResourceLocation/Identifier, byte[]); 1.21.2/1.21.3 take (ResourceLocation, ByteBuf). Try byte[] first.
+        this.discardedPayloadCtor = Reflect.ctorAny(discardedPayload,
+                new Class<?>[] {resourceLocation, byte[].class},
+                new Class<?>[] {resourceLocation, ByteBuf.class});
+        this.discardedPayloadTakesByteBuf =
+                discardedPayloadCtor.getParameterTypes()[1] == ByteBuf.class;
         this.fabricPayloadId = newResourceLocation(resourceLocation, FABRIC_CHANNEL);
         this.neoForgePayloadId = newResourceLocation(resourceLocation, NEOFORGE_CHANNEL);
 
@@ -285,7 +296,9 @@ public final class NmsRecipeBridge implements RecipeBridge {
             Object serverPlayer = Reflect.call(getHandle, player);
             // ServerPlayer.connection (Mojang-mapped, stable on the Paper family).
             Object connection = Reflect.getField(serverPlayer, "connection");
-            Object discarded = discardedPayloadCtor.newInstance(payloadId, payload);
+            // 1.21.2/1.21.3 want the data as a ByteBuf; 1.21.4+ want a byte[]. Match the resolved constructor.
+            Object data = discardedPayloadTakesByteBuf ? Unpooled.wrappedBuffer(payload) : payload;
+            Object discarded = discardedPayloadCtor.newInstance(payloadId, data);
             Object packet = customPayloadPacketCtor.newInstance(discarded);
             sendPacket(connection, packet);
         } catch (ReflectiveOperationException | RuntimeException e) {

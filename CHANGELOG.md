@@ -2,6 +2,11 @@
 
 All notable changes to this project are documented here.
 
+## [0.1.0-beta.2] - 2026-06-23
+
+### Added
+- Support for Minecraft 26.2.
+
 ## [0.1.0-beta.1] - 2026-06-01
 
 ### Added

@@ -1,0 +1,73 @@
+name: Build GitHub Release
+
+on:
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Release tag matching gradle.properties, for example v0.1.0-beta.3
+        required: true
+        type: string
+      prerelease:
+        description: Mark the GitHub Release as a pre-release
+        required: true
+        default: true
+        type: boolean
+
+permissions:
+  contents: write
+
+jobs:
+  build-and-release:
+    name: Build and publish GitHub Release
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Java 21
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "21"
+
+      - name: Setup Gradle
+        uses: gradle/actions/setup-gradle@v4
+
+      - name: Verify release tag
+        shell: bash
+        run: |
+          version=$(grep '^version=' gradle.properties | cut -d= -f2)
+          expected_tag="v${version}"
+          if [ "${{ inputs.tag }}" != "$expected_tag" ]; then
+            echo "Expected tag $expected_tag, received ${{ inputs.tag }}" >&2
+            exit 1
+          fi
+
+      - name: Build
+        run: ./gradlew clean test jar --no-daemon
+
+      - name: Upload build artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: JEIRecipeFix-${{ inputs.tag }}
+          path: build/libs/*.jar
+          if-no-files-found: error
+
+      - name: Create or update GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ inputs.tag }}
+          PRERELEASE: ${{ inputs.prerelease }}
+        shell: bash
+        run: |
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            gh release upload "$TAG" build/libs/*.jar --clobber
+            exit 0
+          fi
+
+          args=(--title "$TAG" --target "$GITHUB_SHA")
+          if [ "$PRERELEASE" = "true" ]; then
+            args+=(--prerelease)
+          fi
+          gh release create "$TAG" build/libs/*.jar "${args[@]}"

@@ -15,6 +15,14 @@ Since Minecraft **1.21.2**, servers no longer send recipe data to clients. On a 
 - A **single jar** for the whole **1.21.2 → 26.1.2** range.
 - Lightweight and dependency-free; stays silent for vanilla clients.
 
+## Experimental JEI Recipe Transfer
+
+This branch also implements the server side of JEI's Fabric recipe-transfer protocol on Paper, Purpur, and Folia. It lets a Fabric client with JEI move matching ingredients from its inventory into the player crafting grid or a vanilla crafting table. Recipe transfer is currently verified only on Purpur 1.21.11 with Fabric JEI 27.17.0.50. Other server-core, Minecraft, and JEI combinations require compatibility testing before they are claimed as supported. If a combination works, please open a compatibility issue so the maintainer can verify and mark it as supported.
+
+The bridge advertises JEI's Fabric channels and accepts `jei:recipe_transfer` and `jei:recipe_transfer_counted`. Every transfer is validated against the currently open Bukkit inventory before any item is moved. Invalid packets, invalid slot references, over-sized lists, invalid counts, and incompatible destination stacks are rejected. If a transfer fails after the crafting grid has changed, the affected slots are restored from a snapshot.
+
+This is intentionally scoped to recipe transfer only. It does not enable JEI cheat actions, item deletion, hotbar writes, or item giving on a plugin server. See [Recipe Transfer](docs/recipe-transfer.md) for protocol notes, compatibility, and limitations.
+
 ## How it works
 
 The plugin reads the recipes your server already knows and delivers them to the client the same way a mod loader normally would. It does **not** change crafting, add content, or affect gameplay — it only restores the recipe information that recipe-viewer mods need in order to display it.

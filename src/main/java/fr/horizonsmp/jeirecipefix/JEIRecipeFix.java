@@ -6,6 +6,7 @@ import fr.horizonsmp.jeirecipefix.config.PluginConfig;
 import fr.horizonsmp.jeirecipefix.i18n.Messages;
 import fr.horizonsmp.jeirecipefix.listener.PlayerConnectionListener;
 import fr.horizonsmp.jeirecipefix.listener.ResourceReloadListener;
+import fr.horizonsmp.jeirecipefix.transfer.JeiTransferBridge;
 import fr.horizonsmp.jeirecipefix.nms.NmsRecipeBridge;
 import fr.horizonsmp.jeirecipefix.nms.RecipeBridge;
 import fr.horizonsmp.jeirecipefix.sync.RecipeSyncService;
@@ -18,6 +19,7 @@ public final class JEIRecipeFix extends JavaPlugin {
     private final AtomicReference<PluginConfig> config = new AtomicReference<>(PluginConfig.defaults());
     private RecipeSyncService syncService;
     private Messages messages;
+    private JeiTransferBridge transferBridge;
 
     @Override
     public void onEnable() {
@@ -29,6 +31,9 @@ public final class JEIRecipeFix extends JavaPlugin {
             getLogger().warning("Unsupported server internals; recipe sync disabled. JEIRecipeFix will stay dormant.");
         }
         this.syncService = new RecipeSyncService(bridge, config::get, this, getLogger());
+
+        this.transferBridge = new JeiTransferBridge(this);
+        transferBridge.register();
 
         getServer().getPluginManager().registerEvents(
                 new PlayerConnectionListener(this, syncService, config::get), this);
@@ -42,6 +47,13 @@ public final class JEIRecipeFix extends JavaPlugin {
 
         getLogger().info("JEIRecipeFix enabled (recipe sync "
                 + (bridge.isAvailable() ? "active" : "dormant") + ").");
+    }
+
+    @Override
+    public void onDisable() {
+        if (transferBridge != null) {
+            transferBridge.unregister();
+        }
     }
 
     public void reloadAll() {

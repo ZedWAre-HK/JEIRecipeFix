@@ -1,0 +1,51 @@
+name: Recipe transfer compatibility report
+description: Report a server and Fabric JEI combination where recipe transfer works.
+title: "[Recipe transfer] "
+labels: ["compatibility"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Report successful Fabric JEI recipe transfer here. A maintainer will verify the information before marking a combination as supported.
+  - type: input
+    id: server-core
+    attributes:
+      label: Server core and build
+      placeholder: Purpur build 1234
+    validations:
+      required: true
+  - type: input
+    id: minecraft-version
+    attributes:
+      label: Minecraft version
+      placeholder: 1.21.11
+    validations:
+      required: true
+  - type: input
+    id: fabric-loader-version
+    attributes:
+      label: Fabric Loader version
+      placeholder: 0.18.5
+    validations:
+      required: true
+  - type: input
+    id: jei-version
+    attributes:
+      label: JEI version
+      placeholder: jei-1.21.11-fabric-27.17.0.50.jar
+    validations:
+      required: true
+  - type: checkboxes
+    id: actions-tested
+    attributes:
+      label: Transfer actions tested
+      options:
+        - label: Player 2x2 crafting grid
+        - label: Vanilla 3x3 crafting table
+        - label: Normal transfer
+        - label: Maximum transfer
+  - type: textarea
+    id: notes
+    attributes:
+      label: Notes and logs
+      description: Include relevant plugin logs, errors, or known limitations.

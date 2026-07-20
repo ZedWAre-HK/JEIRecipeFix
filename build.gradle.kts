@@ -19,9 +19,7 @@ dependencies {
 }
 
 java {
-    // JDK 25 is the installed toolchain; options.release = 21 below emits Java 21
-    // bytecode so the single jar still loads on 1.21.2 servers (which run on Java 21).
-    toolchain.languageVersion = JavaLanguageVersion.of(25)
+    toolchain.languageVersion = JavaLanguageVersion.of(21)
 }
 
 tasks {

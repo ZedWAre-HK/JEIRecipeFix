@@ -62,6 +62,7 @@ jobs:
         shell: bash
         run: |
           if gh release view "$TAG" >/dev/null 2>&1; then
+            gh release edit "$TAG" --title "$TAG" --prerelease="$PRERELEASE"
             gh release upload "$TAG" build/libs/*.jar --clobber
             exit 0
           fi

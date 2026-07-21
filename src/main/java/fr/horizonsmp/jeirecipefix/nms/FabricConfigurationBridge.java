@@ -149,9 +149,10 @@ public final class FabricConfigurationBridge {
             Object handler = Reflect.getField(configurationConnection, "handle");
             Object connection = Reflect.getField(handler, "connection");
             channel = (Channel) Reflect.getField(connection, "channel");
+            FabricConfigurationBridge bridge = FabricConfigurationBridge.this;
             Object connectionKey = configurationConnection;
             UUID syncPlayerId = playerId;
-            channel.closeFuture().addListener(future -> onChannelClosed(connectionKey, syncPlayerId));
+            channel.closeFuture().addListener(future -> bridge.onChannelClosed(connectionKey, syncPlayerId));
             channel.eventLoop().execute(() -> {
                 try {
                     if (channel.pipeline().get(handlerName) == null) {

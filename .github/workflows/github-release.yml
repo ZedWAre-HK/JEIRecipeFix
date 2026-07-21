@@ -4,13 +4,13 @@ on:
   workflow_dispatch:
     inputs:
       tag:
-        description: Release tag matching gradle.properties, for example v0.1.0
+        description: Release tag matching gradle.properties, for example v0.1.1
         required: true
         type: string
       prerelease:
         description: Mark the GitHub Release as a pre-release
         required: true
-        default: true
+        default: false
         type: boolean
 
 permissions:
@@ -24,6 +24,9 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.tag }}
+          fetch-depth: 0
 
       - name: Setup Java 21
         uses: actions/setup-java@v4
@@ -37,6 +40,7 @@ jobs:
       - name: Verify release tag
         shell: bash
         run: |
+          git rev-parse -q --verify "refs/tags/${{ inputs.tag }}" >/dev/null
           version=$(grep '^version=' gradle.properties | cut -d= -f2)
           expected_tag="v${version}"
           if [ "${{ inputs.tag }}" != "$expected_tag" ]; then

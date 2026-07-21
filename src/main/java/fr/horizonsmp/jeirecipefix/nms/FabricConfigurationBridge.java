@@ -2,9 +2,6 @@ package fr.horizonsmp.jeirecipefix.nms;
 
 import fr.horizonsmp.jeirecipefix.sync.RecipeSyncService;
 import io.netty.channel.Channel;
-import io.netty.channel.ChannelHandlerContext;
-import io.netty.channel.ChannelOutboundHandlerAdapter;
-import io.netty.channel.ChannelPromise;
 import org.bukkit.event.Event;
 import org.bukkit.event.EventException;
 import org.bukkit.event.EventPriority;
@@ -19,11 +16,11 @@ import java.lang.reflect.Proxy;
 import java.util.Collections;
 import java.util.IdentityHashMap;
 import java.util.Map;
+import java.util.UUID;
 import java.util.concurrent.atomic.AtomicLong;
 
 public final class FabricConfigurationBridge {
     private static final String SUPPORTED_SERIALIZERS = "fabric:recipe_sync/supported_serializers";
-    private static final String UPDATE_RECIPES_PACKET = "net.minecraft.network.protocol.game.ClientboundUpdateRecipesPacket";
     private static final AtomicLong HANDLER_IDS = new AtomicLong();
 
     private final Plugin plugin;
@@ -32,6 +29,7 @@ public final class FabricConfigurationBridge {
     private final Listener configurationListener = new Listener() {
     };
     private final Map<Object, Session> sessions = Collections.synchronizedMap(new IdentityHashMap<>());
+    private final EarlyRecipeSyncTracker earlyRecipeSync = new EarlyRecipeSyncTracker();
     private PluginMessageListener messageListener;
     private volatile byte[] fabricPayload;
     private boolean configurationApiAvailable;
@@ -76,13 +74,17 @@ public final class FabricConfigurationBridge {
         }
     }
 
+    public boolean consumeEarlyFabricSync(UUID playerId) {
+        return earlyRecipeSync.consume(playerId);
+    }
+
     private void onInitialConfiguration(Event event) throws EventException {
         if (!configurationApiAvailable || fabricPayload == null) {
             return;
         }
         try {
             Object configurationConnection = event.getClass().getMethod("getConnection").invoke(event);
-            Session session = new Session(configurationConnection, fabricPayload);
+            Session session = new Session(configurationConnection, fabricPayload, playerId(configurationConnection));
             sessions.put(configurationConnection, session);
             recipeBridge.advertiseFabricRecipeSync(configurationConnection);
             session.install();
@@ -96,6 +98,12 @@ public final class FabricConfigurationBridge {
         if (session != null) {
             session.confirmed = true;
         }
+    }
+
+    private UUID playerId(Object configurationConnection) throws ReflectiveOperationException {
+        Object profile = configurationConnection.getClass().getMethod("getProfile").invoke(configurationConnection);
+        Object id = profile.getClass().getMethod("getId").invoke(profile);
+        return id instanceof UUID uuid ? uuid : null;
     }
 
     private final class MessageListenerInvocationHandler implements InvocationHandler {
@@ -120,24 +128,30 @@ public final class FabricConfigurationBridge {
     private final class Session {
         private final Object configurationConnection;
         private final byte[] payload;
+        private final UUID playerId;
         private final String handlerName = "jeirecipefix-recipe-sync-" + HANDLER_IDS.incrementAndGet();
         private Channel channel;
         private volatile boolean confirmed;
         private volatile boolean injected;
 
-        private Session(Object configurationConnection, byte[] payload) {
+        private Session(Object configurationConnection, byte[] payload, UUID playerId) {
             this.configurationConnection = configurationConnection;
             this.payload = payload;
+            this.playerId = playerId;
         }
 
         private void install() {
             Object handler = Reflect.getField(configurationConnection, "handle");
             Object connection = Reflect.getField(handler, "connection");
             channel = (Channel) Reflect.getField(connection, "channel");
+            channel.closeFuture().addListener(future -> {
+                sessions.remove(configurationConnection);
+                earlyRecipeSync.remove(playerId);
+            });
             channel.eventLoop().execute(() -> {
                 try {
                     if (channel.pipeline().get(handlerName) == null) {
-                        channel.pipeline().addBefore("packet_handler", handlerName, new RecipePacketInterceptor());
+                        channel.pipeline().addBefore("packet_handler", handlerName, newInterceptor());
                     }
                 } catch (RuntimeException exception) {
                     sessions.remove(configurationConnection);
@@ -147,6 +161,7 @@ public final class FabricConfigurationBridge {
         }
 
         private void remove() {
+            sessions.remove(configurationConnection);
             if (channel != null) {
                 channel.eventLoop().execute(() -> {
                     if (channel.pipeline().get(handlerName) != null) {
@@ -156,19 +171,24 @@ public final class FabricConfigurationBridge {
             }
         }
 
-        private final class RecipePacketInterceptor extends ChannelOutboundHandlerAdapter {
-            @Override
-            public void write(ChannelHandlerContext context, Object message, ChannelPromise promise) throws Exception {
-                if (!injected && confirmed && UPDATE_RECIPES_PACKET.equals(message.getClass().getName())) {
-                    injected = true;
-                    try {
-                        context.write(recipeBridge.createFabricPacket(payload));
-                    } catch (RuntimeException exception) {
-                        plugin.getLogger().warning("Unable to inject Fabric recipe sync: " + exception.getMessage());
-                    }
-                }
-                context.write(message, promise);
+        private void onInjected() {
+            if (!injected) {
+                injected = true;
+                earlyRecipeSync.mark(playerId);
             }
+        }
+
+        private void onRecipesUpdated() {
+            remove();
+        }
+
+        private RecipePacketInterceptor newInterceptor() {
+            return new RecipePacketInterceptor(
+                    () -> confirmed,
+                    () -> recipeBridge.createFabricPacket(payload),
+                    this::onInjected,
+                    this::onRecipesUpdated,
+                    exception -> plugin.getLogger().warning("Unable to inject Fabric recipe sync: " + exception.getMessage()));
         }
     }
 }

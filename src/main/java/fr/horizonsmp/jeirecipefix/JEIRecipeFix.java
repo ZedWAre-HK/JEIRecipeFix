@@ -42,7 +42,8 @@ public final class JEIRecipeFix extends JavaPlugin {
         transferBridge.register();
 
         getServer().getPluginManager().registerEvents(
-                new PlayerConnectionListener(this, syncService, config::get), this);
+                new PlayerConnectionListener(this, syncService, config::get,
+                        configurationBridge::consumeEarlyFabricSync), this);
         getServer().getPluginManager().registerEvents(
                 new ResourceReloadListener(syncService, config::get, configurationBridge::refreshFabricPayload), this);
 

@@ -7,6 +7,7 @@ import fr.horizonsmp.jeirecipefix.i18n.Messages;
 import fr.horizonsmp.jeirecipefix.listener.PlayerConnectionListener;
 import fr.horizonsmp.jeirecipefix.listener.ResourceReloadListener;
 import fr.horizonsmp.jeirecipefix.transfer.JeiTransferBridge;
+import fr.horizonsmp.jeirecipefix.nms.FabricConfigurationBridge;
 import fr.horizonsmp.jeirecipefix.nms.NmsRecipeBridge;
 import fr.horizonsmp.jeirecipefix.nms.RecipeBridge;
 import fr.horizonsmp.jeirecipefix.sync.RecipeSyncService;
@@ -20,6 +21,7 @@ public final class JEIRecipeFix extends JavaPlugin {
     private RecipeSyncService syncService;
     private Messages messages;
     private JeiTransferBridge transferBridge;
+    private FabricConfigurationBridge configurationBridge;
 
     @Override
     public void onEnable() {
@@ -32,13 +34,17 @@ public final class JEIRecipeFix extends JavaPlugin {
         }
         this.syncService = new RecipeSyncService(bridge, config::get, this, getLogger());
 
+        this.configurationBridge = new FabricConfigurationBridge(this, bridge, syncService);
+        configurationBridge.refreshFabricPayload();
+        configurationBridge.register();
+
         this.transferBridge = new JeiTransferBridge(this);
         transferBridge.register();
 
         getServer().getPluginManager().registerEvents(
                 new PlayerConnectionListener(this, syncService, config::get), this);
         getServer().getPluginManager().registerEvents(
-                new ResourceReloadListener(syncService, config::get), this);
+                new ResourceReloadListener(syncService, config::get, configurationBridge::refreshFabricPayload), this);
 
         this.messages = new Messages(this);
         JEIRecipeFixCommand command = new JEIRecipeFixCommand(this, syncService, messages);
@@ -51,6 +57,9 @@ public final class JEIRecipeFix extends JavaPlugin {
 
     @Override
     public void onDisable() {
+        if (configurationBridge != null) {
+            configurationBridge.unregister();
+        }
         if (transferBridge != null) {
             transferBridge.unregister();
         }
@@ -62,6 +71,9 @@ public final class JEIRecipeFix extends JavaPlugin {
         if (messages != null) messages.reload();
         if (syncService != null) {
             syncService.invalidate();
+        }
+        if (configurationBridge != null) {
+            configurationBridge.refreshFabricPayload();
         }
     }
 

@@ -17,7 +17,9 @@ import java.util.Map;
 public final class NmsRecipeBridge implements RecipeBridge {
 
     private static final String FABRIC_CHANNEL = "fabric:recipe_sync";
+    private static final String FABRIC_SUPPORTED_SERIALIZERS_CHANNEL = "fabric:recipe_sync/supported_serializers";
     private static final String NEOFORGE_CHANNEL = "neoforge:recipe_content";
+    private static final String REGISTER_CHANNEL = "minecraft:register";
 
     private final Plugin plugin;
     private boolean available;
@@ -54,6 +56,7 @@ public final class NmsRecipeBridge implements RecipeBridge {
     private boolean discardedPayloadTakesByteBuf; // 1.21.2/1.21.3 take ByteBuf; 1.21.4+ take byte[].
     private Object fabricPayloadId;
     private Object neoForgePayloadId;
+    private Object registerPayloadId;
     private boolean sendFailureLogged;
 
     public NmsRecipeBridge(Plugin plugin) {
@@ -146,6 +149,7 @@ public final class NmsRecipeBridge implements RecipeBridge {
                 discardedPayloadCtor.getParameterTypes()[1] == ByteBuf.class;
         this.fabricPayloadId = newResourceLocation(resourceLocation, FABRIC_CHANNEL);
         this.neoForgePayloadId = newResourceLocation(resourceLocation, NEOFORGE_CHANNEL);
+        this.registerPayloadId = newResourceLocation(resourceLocation, REGISTER_CHANNEL);
 
         Class<?> craftPlayer = Reflect.clazz("org.bukkit.craftbukkit.entity.CraftPlayer");
         this.getHandle = Reflect.method(craftPlayer, "getHandle");
@@ -262,6 +266,18 @@ public final class NmsRecipeBridge implements RecipeBridge {
     }
 
     @Override
+    public Object createFabricPacket(byte[] payload) {
+        return createCustomPayloadPacket(fabricPayloadId, payload);
+    }
+
+    @Override
+    public void advertiseFabricRecipeSync(Object configurationConnection) {
+        Object handler = Reflect.getField(configurationConnection, "handle");
+        sendPacket(handler, createCustomPayloadPacket(registerPayloadId,
+                FABRIC_SUPPORTED_SERIALIZERS_CHANNEL.getBytes(java.nio.charset.StandardCharsets.US_ASCII)));
+    }
+
+    @Override
     public void sendNeoForge(Player player, byte[] payload) {
         send(player, neoForgePayloadId, payload);
         sendTagsPacket(player);
@@ -297,16 +313,23 @@ public final class NmsRecipeBridge implements RecipeBridge {
             // ServerPlayer.connection (Mojang-mapped, stable on the Paper family).
             Object connection = Reflect.getField(serverPlayer, "connection");
             // 1.21.2/1.21.3 want the data as a ByteBuf; 1.21.4+ want a byte[]. Match the resolved constructor.
-            Object data = discardedPayloadTakesByteBuf ? Unpooled.wrappedBuffer(payload) : payload;
-            Object discarded = discardedPayloadCtor.newInstance(payloadId, data);
-            Object packet = customPayloadPacketCtor.newInstance(discarded);
-            sendPacket(connection, packet);
-        } catch (ReflectiveOperationException | RuntimeException e) {
+            sendPacket(connection, createCustomPayloadPacket(payloadId, payload));
+        } catch (RuntimeException e) {
             if (!sendFailureLogged) {
                 sendFailureLogged = true;
                 plugin.getLogger().log(java.util.logging.Level.SEVERE,
                         "Failed to send recipe payload to " + player.getName() + "; suppressing further send errors.", e);
             }
+        }
+    }
+
+    private Object createCustomPayloadPacket(Object payloadId, byte[] payload) {
+        try {
+            Object data = discardedPayloadTakesByteBuf ? Unpooled.wrappedBuffer(payload) : payload;
+            Object discarded = discardedPayloadCtor.newInstance(payloadId, data);
+            return customPayloadPacketCtor.newInstance(discarded);
+        } catch (ReflectiveOperationException e) {
+            throw new IllegalStateException("Cannot create custom payload packet", e);
         }
     }
 

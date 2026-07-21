@@ -40,6 +40,10 @@ public final class RecipeSyncService {
         };
     }
 
+    public byte[] fabricPayload() {
+        return shouldSync(ClientBrand.FABRIC) ? payloadFor(ClientBrand.FABRIC) : null;
+    }
+
     /** Sends recipes to one player if applicable. Returns true if a payload was sent. */
     public boolean syncTo(Player player) {
         ClientBrand brand = ClientBrand.fromBrand(player.getClientBrandName());

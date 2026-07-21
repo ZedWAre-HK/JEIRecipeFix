@@ -1,0 +1,57 @@
+name: Fabric configuration sync compatibility report
+description: Report a tested server and Fabric JEI combination where the Purpur recipe-availability warning does not appear.
+title: "[Fabric configuration sync] "
+labels: ["compatibility"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Report a successful configuration-stage recipe synchronization combination here. A maintainer will verify it before marking that combination as supported.
+  - type: input
+    id: server-core
+    attributes:
+      label: Server core and build
+      placeholder: Purpur build 1234
+    validations:
+      required: true
+  - type: input
+    id: minecraft-version
+    attributes:
+      label: Minecraft version
+      placeholder: 1.21.11
+    validations:
+      required: true
+  - type: input
+    id: fabric-loader-version
+    attributes:
+      label: Fabric Loader version
+      placeholder: 0.18.5
+    validations:
+      required: true
+  - type: input
+    id: fabric-api-version
+    attributes:
+      label: Fabric API version
+      placeholder: 0.141.5+1.21.11
+    validations:
+      required: true
+  - type: input
+    id: jei-version
+    attributes:
+      label: JEI version
+      placeholder: jei-1.21.11-fabric-27.17.0.50.jar
+    validations:
+      required: true
+  - type: checkboxes
+    id: results
+    attributes:
+      label: Results verified after reconnecting
+      options:
+        - label: The plugin logged that Fabric configuration-phase recipe sync is active.
+        - label: JEI did not show the Purpur recipe-availability warning.
+        - label: JEI recipe transfer still worked.
+  - type: textarea
+    id: notes
+    attributes:
+      label: Notes and logs
+      description: Include relevant plugin logs, errors, and known limitations.

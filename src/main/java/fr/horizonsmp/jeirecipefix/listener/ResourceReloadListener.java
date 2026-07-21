@@ -12,15 +12,19 @@ public final class ResourceReloadListener implements Listener {
 
     private final RecipeSyncService syncService;
     private final Supplier<PluginConfig> config;
+    private final Runnable configurationPayloadRefresh;
 
-    public ResourceReloadListener(RecipeSyncService syncService, Supplier<PluginConfig> config) {
+    public ResourceReloadListener(RecipeSyncService syncService, Supplier<PluginConfig> config,
+                                  Runnable configurationPayloadRefresh) {
         this.syncService = syncService;
         this.config = config;
+        this.configurationPayloadRefresh = configurationPayloadRefresh;
     }
 
     @EventHandler
     public void onResourcesReloaded(ServerResourcesReloadedEvent event) {
         syncService.invalidate();
+        configurationPayloadRefresh.run();
         if (config.get().syncOnDatapackReload()) {
             syncService.resyncAll();
         }

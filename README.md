@@ -15,6 +15,12 @@ Since Minecraft **1.21.2**, servers no longer send recipe data to clients. On a 
 - A **single jar** for the whole **1.21.2 → 26.1.2** range.
 - Lightweight and dependency-free; stays silent for vanilla clients.
 
+## Fabric Configuration Sync
+
+On Paper-family cores with configuration-stage plugin messaging, JEIRecipeFix performs Fabric's recipe-sync handshake before the vanilla recipe update packet. JEI therefore treats the recipes as server-synchronized and does not display its misleading Purpur recipe-availability warning.
+
+This path is verified only with **Purpur 1.21.11**, **Fabric API 0.141.5+1.21.11**, and **Fabric JEI 27.17.0.50**. Other core, Minecraft, Fabric API, and JEI combinations need compatibility testing before they are claimed as supported. See [Fabric Configuration Sync](docs/fabric-configuration-sync.md) for the protocol, scope, and testing details, or open a compatibility issue with a successful tested combination.
+
 ## Experimental JEI Recipe Transfer
 
 This branch also implements the server side of JEI's Fabric recipe-transfer protocol on Paper, Purpur, and Folia. It lets a Fabric client with JEI move matching ingredients from its inventory into the player crafting grid or a vanilla crafting table. Recipe transfer is currently verified only on Purpur 1.21.11 with Fabric JEI 27.17.0.50. Other server-core, Minecraft, and JEI combinations require compatibility testing before they are claimed as supported. If a combination works, please open a compatibility issue so the maintainer can verify and mark it as supported.

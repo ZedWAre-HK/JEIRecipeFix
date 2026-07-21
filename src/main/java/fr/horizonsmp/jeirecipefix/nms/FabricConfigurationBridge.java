@@ -78,6 +78,11 @@ public final class FabricConfigurationBridge {
         return earlyRecipeSync.consume(playerId);
     }
 
+    private void onChannelClosed(Object configurationConnection, UUID playerId) {
+        sessions.remove(configurationConnection);
+        earlyRecipeSync.remove(playerId);
+    }
+
     private void onInitialConfiguration(Event event) throws EventException {
         if (!configurationApiAvailable || fabricPayload == null) {
             return;
@@ -144,10 +149,9 @@ public final class FabricConfigurationBridge {
             Object handler = Reflect.getField(configurationConnection, "handle");
             Object connection = Reflect.getField(handler, "connection");
             channel = (Channel) Reflect.getField(connection, "channel");
-            channel.closeFuture().addListener(future -> {
-                sessions.remove(configurationConnection);
-                earlyRecipeSync.remove(playerId);
-            });
+            Object connectionKey = configurationConnection;
+            UUID syncPlayerId = playerId;
+            channel.closeFuture().addListener(future -> onChannelClosed(connectionKey, syncPlayerId));
             channel.eventLoop().execute(() -> {
                 try {
                     if (channel.pipeline().get(handlerName) == null) {
@@ -163,9 +167,11 @@ public final class FabricConfigurationBridge {
         private void remove() {
             sessions.remove(configurationConnection);
             if (channel != null) {
-                channel.eventLoop().execute(() -> {
-                    if (channel.pipeline().get(handlerName) != null) {
-                        channel.pipeline().remove(handlerName);
+                Channel installedChannel = channel;
+                String installedHandlerName = handlerName;
+                installedChannel.eventLoop().execute(() -> {
+                    if (installedChannel.pipeline().get(installedHandlerName) != null) {
+                        installedChannel.pipeline().remove(installedHandlerName);
                     }
                 });
             }
